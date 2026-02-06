@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EasyLeave | HR Portal</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="main-wrapper">
+    
+    <div id="login-view" class="center-stage">
+        <div class="login-card">
+            <div class="brand-logo"><i class="fa-solid fa-leaf"></i></div>
+            <h2>Welcome Back</h2>
+            <p>Enter your credentials</p>
+            
+            <div class="input-group">
+                <i class="fa-solid fa-user"></i>
+                <input type="text" id="username" placeholder="Username">
+            </div>
+            <div class="input-group">
+                <i class="fa-solid fa-lock"></i>
+                <input type="password" id="password" placeholder="Password">
+            </div>
+            
+            <button class="btn-primary" onclick="login()">Sign In <i class="fa-solid fa-arrow-right"></i></button>
+        </div>
+    </div>
+
+    <div id="dashboard-view" class="hidden">
+        <nav class="navbar">
+            <div class="nav-brand"><i class="fa-solid fa-leaf"></i> EasyLeave</div>
+            <div class="user-profile">
+                <img id="user-avatar" src="" alt="Profile" class="avatar-img">
+                <span id="welcome-msg">Loading...</span>
+                <button class="btn-small-red" onclick="location.reload()" title="Logout"><i class="fa-solid fa-power-off"></i></button>
+            </div>
+        </nav>
+
+        <div class="dashboard-container">
+            <div id="balance-display" class="stats-row hidden">
+                <div class="stat-card vacation">
+                    <div class="icon-bg"><i class="fa-solid fa-plane-departure"></i></div>
+                    <h3>Vacation</h3>
+                    <p><span id="vac-bal">0</span> Days Left</p>
+                </div>
+                <div class="stat-card sick">
+                    <div class="icon-bg"><i class="fa-solid fa-house-medical"></i></div>
+                    <h3>Sick Leave</h3>
+                    <p><span id="sick-bal">0</span> Days Left</p>
+                </div>
+            </div>
+
+            <div class="content-grid">
+                <div class="left-col">
+                    <div id="employee-controls" class="card hidden">
+                        <div class="card-header"><h4><i class="fa-solid fa-pen-to-square"></i> Request Leave</h4></div>
+                        <div class="card-body">
+                            <label>Leave Type</label>
+                            <select id="l-type">
+                                <option value="Vacation">🌴 Vacation</option>
+                                <option value="Sick">🤒 Sick Leave</option>
+                            </select>
+                            <div class="date-row">
+                                <div><label>From</label><input type="date" id="l-start"></div>
+                                <div><label>To</label><input type="date" id="l-end"></div>
+                            </div>
+                            <label>Reason</label>
+                            <input type="text" id="l-reason" placeholder="Reason...">
+                            <button class="btn-primary" onclick="submitLeave()">Submit Request</button>
+                        </div>
+                    </div>
+
+                    <div id="manager-controls" class="card hidden">
+                        <div class="card-header"><h4><i class="fa-solid fa-bell"></i> Pending Approvals</h4></div>
+                        <div class="card-body">
+                            <ul id="pending-list" class="request-list"></ul>
+                            <div id="no-pending" class="empty-state" style="display:none; text-align:center; color:#999;">
+                                <p>No pending requests</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="right-col">
+                    <div class="card">
+                        <div class="card-header"><h4><i class="fa-solid fa-calendar-day"></i> Team Calendar</h4></div>
+                        <div class="card-body">
+                            <div id="calendar" class="calendar-grid"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let currentUser = null;
+
+    // 1. LOGIN
+    async function login() {
+        const u = document.getElementById('username').value;
+        const p = document.getElementById('password').value;
+
+        // Connect to Backend
+        try {
+            const res = await fetch('http://localhost:3000/login', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ username: u, password: p })
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                currentUser = data.user;
+                document.getElementById('login-view').classList.add('hidden');
+                document.getElementById('dashboard-view').classList.remove('hidden');
+                
+                // Set UI Details
+                document.getElementById('welcome-msg').innerText = currentUser.username;
+                document.getElementById('user-avatar').src = `https://ui-avatars.com/api/?name=${currentUser.username}&background=0D8ABC&color=fff`;
+
+                loadCalendar();
+
+                if (currentUser.role === 'manager') {
+                    document.getElementById('manager-controls').classList.remove('hidden');
+                    loadPendingRequests();
+                } else {
+                    document.getElementById('employee-controls').classList.remove('hidden');
+                    document.getElementById('balance-display').classList.remove('hidden');
+                    document.getElementById('vac-bal').innerText = currentUser.vacation_balance;
+                    document.getElementById('sick-bal').innerText = currentUser.sick_balance;
+                }
+            } else {
+                alert('Invalid Username or Password');
+            }
+        } catch(e) {
+            console.error(e);
+            alert("Error: Is the server running?");
+        }
+    }
+
+    // 2. SUBMIT LEAVE
+    async function submitLeave() {
+        const start = document.getElementById('l-start').value;
+        const end = document.getElementById('l-end').value;
+        if(!start || !end) return alert("Select dates");
+
+        await fetch('http://localhost:3000/request', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                user_id: currentUser.id,
+                type: document.getElementById('l-type').value,
+                start: start, end: end,
+                reason: document.getElementById('l-reason').value
+            })
+        });
+        alert('Request Sent!');
+        location.reload();
+    }
+
+    // 3. LOAD REQUESTS (Manager)
+    async function loadPendingRequests() {
+        const res = await fetch('http://localhost:3000/leaves');
+        const leaves = await res.json();
+        const list = document.getElementById('pending-list');
+        list.innerHTML = '';
+        let count = 0;
+
+        leaves.forEach(l => {
+            if(l.status === 'Pending') {
+                count++;
+                const s = new Date(l.start_date);
+                const e = new Date(l.end_date);
+                const days = Math.ceil(Math.abs(e - s) / (1000 * 60 * 60 * 24)) + 1;
+
+                list.innerHTML += `
+                    <li class="request-item">
+                        <div class="req-info">
+                            <strong>${l.username}</strong>
+                            <span>${l.leave_type} • ${days} Days</span>
+                            <small>${l.reason}</small>
+                        </div>
+                        <div class="req-actions">
+                            <button class="btn-icon check" onclick="decide(${l.id}, 'Approved', ${l.user_id}, '${l.leave_type}', ${days})"><i class="fa-solid fa-check"></i></button>
+                            <button class="btn-icon xmark" onclick="decide(${l.id}, 'Rejected', ${l.user_id}, '${l.leave_type}', ${days})"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+                    </li>`;
+            }
+        });
+        if(count === 0) document.getElementById('no-pending').style.display = 'block';
+    }
+
+    // 4. DECIDE (Manager)
+    async function decide(id, status, userId, type, days) {
+        await fetch('http://localhost:3000/update-status', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ id, status, user_id: userId, type, days })
+        });
+        loadPendingRequests();
+        loadCalendar();
+    }
+
+    // 5. CALENDAR
+    async function loadCalendar() {
+        const res = await fetch('http://localhost:3000/leaves');
+        const leaves = await res.json();
+        const cal = document.getElementById('calendar');
+        cal.innerHTML = '';
+
+        for(let i=1; i<=30; i++) {
+            let content = `<div class="day"><span class="day-num">${i}</span>`;
+            leaves.forEach(l => {
+                if(l.status === 'Approved') {
+                    const s = new Date(l.start_date).getDate();
+                    const e = new Date(l.end_date).getDate();
+                    if(i >= s && i <= e) {
+                        const colorClass = l.leave_type === 'Vacation' ? 'tag-vacation' : 'tag-sick';
+                        content += `<div class="leave-marker ${colorClass}" title="${l.username}">${l.username.substring(0,3)}</div>`;
+                    }
+                }
+            });
+            content += `</div>`;
+            cal.innerHTML += content;
+        }
+    }
+</script>
+</body>
+</html>
